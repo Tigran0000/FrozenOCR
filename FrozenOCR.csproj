@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- Publish as an unpackaged self-contained app so the Windows App SDK runtime ships with the build. -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Self-contained + single-file deployment -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeCopyLocalFilesOutputGroup>false</IncludeCopyLocalFilesOutputGroup>
+    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+    <GenerateAppxPackageOnPublish>false</GenerateAppxPackageOnPublish>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" Version="1.8.37" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="1.8.250907003" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="dist\**\*" />
+    <Content Remove="dist\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AppxPackagePayloadExclude Include="$(UserProfile)\.nuget\packages\microsoft.web.webview2\1.0.3719.77\lib\net462\Microsoft.Web.WebView2.Core.dll" />
+    <AppxPackagePayloadExclude Include="$(UserProfile)\.nuget\packages\microsoft.web.webview2\1.0.3719.77\runtimes\win-x86\native_uap\Microsoft.Web.WebView2.Core.dll" />
+    <AppxPackagePayloadExclude Include="$(UserProfile)\.nuget\packages\microsoft.web.webview2\1.0.3719.77\runtimes\win-x64\native_uap\Microsoft.Web.WebView2.Core.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.Web.WebView2.Wpf">
+      <HintPath>$(UserProfile)\.nuget\packages\microsoft.web.webview2\1.0.3719.77\lib\net462\Microsoft.Web.WebView2.Wpf.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>$(UserProfile)\.nuget\packages\microsoft.web.webview2\1.0.3719.77\lib\net462\Microsoft.Web.WebView2.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Remove="Microsoft.Web.WebView2.Core.Projection" />
+  </ItemGroup>
+
+  <Target Name="RemoveWebView2NativeUapFromPublish" AfterTargets="ResolvePublishFiles">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="$([System.String]::Copy('%(ResolvedFileToPublish.Identity)').Contains('native_uap'))" />
+    </ItemGroup>
+  </Target>
+  <!-- Must run before _ComputeFilesToBundle so the single-file bundle never sees the duplicate native_uap WebView2.Core.dll -->
+  <Target Name="RemoveWebView2NativeUapBeforeSingleFileBundle" BeforeTargets="_ComputeFilesToBundle">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="$([System.String]::Copy('%(ResolvedFileToPublish.Identity)').Contains('native_uap'))" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RemoveWebView2ProjectionReference" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <ReferencePath Remove="@(ReferencePath)"
+                     Condition="$([System.String]::Copy('%(ReferencePath.Identity)').Contains('Microsoft.Web.WebView2.Core.Projection.dll'))" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                               Condition="$([System.String]::Copy('%(ReferenceCopyLocalPaths.Identity)').Contains('Microsoft.Web.WebView2.Core.Projection.dll'))" />
+    </ItemGroup>
+  </Target>
+
+</Project>

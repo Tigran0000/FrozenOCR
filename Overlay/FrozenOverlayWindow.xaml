@@ -1,0 +1,848 @@
+<Window x:Class="FrozenOCR.Overlay.FrozenOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:FrozenOCR.Overlay"
+        xmlns:settings="clr-namespace:FrozenOCR.Settings"
+        xmlns:ocr="clr-namespace:FrozenOCR.Ocr"
+        x:ClassModifier="internal"
+        UseLayoutRounding="True"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="Black"
+        WindowStartupLocation="Manual"
+        Title="FrozenOCR Overlay">
+    <Window.Resources>
+        <CubicEase x:Key="EaseOutCubic" EasingMode="EaseOut"/>
+        <CubicEase x:Key="EaseInCubic" EasingMode="EaseIn"/>
+        <Style x:Key="SearchNavButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource Surface.BackgroundAlt}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.4"/>
+                    <Setter Property="Cursor" Value="Arrow"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SelectionActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource Surface.BackgroundAlt}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Surface.Border}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Icon.Foreground}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Keycap"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Keycap" Property="Background" Value="{DynamicResource Surface.BackgroundAlt}" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="{DynamicResource Surface.Border}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Keycap" Property="Background" Value="{DynamicResource Surface.BackgroundAlt}" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="{DynamicResource Surface.Border}" />
+                                <Setter TargetName="Keycap" Property="RenderTransformOrigin" Value="0.5,0.5"/>
+                                <Setter TargetName="Keycap" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <Image x:Name="BackgroundImage"
+               Stretch="None"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top"
+               SnapsToDevicePixels="True"/>
+
+        <!-- Dim everything outside the selection -->
+        <Canvas x:Name="DimCanvas" IsHitTestVisible="False">
+            <Rectangle x:Name="DimTop" Fill="{DynamicResource App.Dim}" Visibility="Collapsed" />
+            <Rectangle x:Name="DimLeft" Fill="{DynamicResource App.Dim}" Visibility="Collapsed" />
+            <Rectangle x:Name="DimRight" Fill="{DynamicResource App.Dim}" Visibility="Collapsed" />
+            <Rectangle x:Name="DimBottom" Fill="{DynamicResource App.Dim}" Visibility="Collapsed" />
+        </Canvas>
+
+        <!-- Selection + processing visuals -->
+        <Canvas x:Name="SelectionCanvas" Background="Transparent">
+            <!-- Focus selection (soft + rounded) -->
+            <Border x:Name="SelectionBorder"
+                    Visibility="Collapsed"
+                    CornerRadius="10"
+                    Background="#16EAF5EA"
+                    BorderBrush="#18EAF5EA"
+                    BorderThickness="1" />
+
+            <!-- Playful "OCR happening" shimmer inside selection -->
+            <Border x:Name="ProcessingBorder"
+                    Visibility="Collapsed"
+                    CornerRadius="10"
+                    BorderThickness="2"
+                    Background="#00FFFFFF" />
+
+            <Rectangle x:Name="ProcessingShimmer"
+                       Visibility="Collapsed"
+                       RadiusX="10"
+                       RadiusY="10"
+                       Opacity="0.55" />
+        </Canvas>
+
+        <!-- Selection handles + action bar -->
+        <Canvas x:Name="SelectionUiCanvas" Background="Transparent">
+            <Canvas x:Name="SelectionHandleCanvas" Visibility="Collapsed">
+                <Border x:Name="HandleNW" Width="8" Height="8" CornerRadius="2" Tag="NW"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeNWSE"/>
+                <Border x:Name="HandleN" Width="8" Height="8" CornerRadius="2" Tag="N"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeNS"/>
+                <Border x:Name="HandleNE" Width="8" Height="8" CornerRadius="2" Tag="NE"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeNESW"/>
+                <Border x:Name="HandleE" Width="8" Height="8" CornerRadius="2" Tag="E"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeWE"/>
+                <Border x:Name="HandleSE" Width="8" Height="8" CornerRadius="2" Tag="SE"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeNWSE"/>
+                <Border x:Name="HandleS" Width="8" Height="8" CornerRadius="2" Tag="S"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeNS"/>
+                <Border x:Name="HandleSW" Width="8" Height="8" CornerRadius="2" Tag="SW"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeNESW"/>
+                <Border x:Name="HandleW" Width="8" Height="8" CornerRadius="2" Tag="W"
+                        Background="{DynamicResource Surface.Background}" BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1" Cursor="SizeWE"/>
+            </Canvas>
+
+            <Border x:Name="SelectionActionBar"
+                    Visibility="Collapsed"
+                    Background="{DynamicResource Surface.Background}"
+                    BorderBrush="{DynamicResource Surface.Border}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="8,6">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.28"/>
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ConfirmOcrButton"
+                            Style="{StaticResource SelectionActionButtonStyle}"
+                            ToolTip="Text actions"
+                            Click="ConfirmOcrButton_Click">
+                        <Path Style="{StaticResource FluentIconPathStyle}"
+                              Data="{StaticResource Icon_DocumentCopy}"/>
+                    </Button>
+                    <Button x:Name="SaveScreenshotButton"
+                            Style="{StaticResource SelectionActionButtonStyle}"
+                            ToolTip="Save Screenshot"
+                            Click="SaveScreenshotButton_Click">
+                        <Path Style="{StaticResource FluentIconPathStyle}"
+                              Data="{StaticResource Icon_SaveAs}"/>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Canvas>
+
+        <!-- OCR visuals inside selection (cloudy highlights) -->
+        <local:OcrRenderLayer x:Name="OcrVisualCanvas"
+                              Opacity="1"
+                              IsHitTestVisible="False" />
+
+        <!-- OCR hit regions inside selection (invisible; for hover/cursor + selection) -->
+        <Canvas x:Name="OcrHitCanvas"
+                Background="Transparent"
+                Opacity="1"
+                IsHitTestVisible="False" />
+
+        <!-- Build marker (debug visibility) -->
+        <Border x:Name="BuildMarker"
+                Visibility="Collapsed"
+                Background="#CCB00020"
+                CornerRadius="8"
+                Padding="10,8"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="12"
+                IsHitTestVisible="False">
+            <TextBlock x:Name="BuildMarkerText"
+                       Foreground="#FFFFFFFF"
+                       FontSize="18"
+                       FontFamily="Segoe UI"
+                       FontWeight="SemiBold" />
+        </Border>
+
+        <!-- Overlay HUD (Settings gear + Esc pill) -->
+        <Grid x:Name="HudContainer"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top"
+              Margin="12"
+              Background="Transparent">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0">
+                <!-- Settings Gear (left) -->
+                <Button x:Name="SettingsGearButton"
+                        Opacity="0"
+                        Width="40"
+                        Height="40"
+                        Padding="8"
+                        Click="SettingsGearButton_Click"
+                        Content="⚙"
+                        Foreground="{DynamicResource Icon.Foreground}"
+                        FontSize="18"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Button.RenderTransform>
+                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                    </Button.RenderTransform>
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="IsHitTestVisible" Value="False"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="GearBorder"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="8"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="GearBorder" Property="Background" Value="{DynamicResource Surface.BackgroundAlt}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ElementName=HudContainer, Path=IsMouseOver}" Value="True">
+                                    <Setter Property="IsHitTestVisible" Value="True"/>
+                                    <DataTrigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                 From="0" To="1"
+                                                                 Duration="0:0:0.25"
+                                                                 EasingFunction="{StaticResource EaseOutCubic}"/>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                 From="0.7" To="1"
+                                                                 Duration="0:0:0.25"
+                                                                 EasingFunction="{StaticResource EaseOutCubic}"/>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                 From="0.7" To="1"
+                                                                 Duration="0:0:0.25"
+                                                                 EasingFunction="{StaticResource EaseOutCubic}"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </DataTrigger.EnterActions>
+                                    <DataTrigger.ExitActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                 From="1" To="0"
+                                                                 Duration="0:0:0.18"
+                                                                 EasingFunction="{StaticResource EaseInCubic}"/>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                 From="1" To="0.7"
+                                                                 Duration="0:0:0.18"
+                                                                 EasingFunction="{StaticResource EaseInCubic}"/>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                 From="1" To="0.7"
+                                                                 Duration="0:0:0.18"
+                                                                 EasingFunction="{StaticResource EaseInCubic}"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </DataTrigger.ExitActions>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ElementName=HudContainer, Path=IsMouseOver}" Value="False">
+                                    <Setter Property="IsHitTestVisible" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!-- Esc Pill (right) -->
+                <Border x:Name="EscPill"
+                        Background="{DynamicResource Surface.Background}"
+                        BorderBrush="{DynamicResource Surface.Border}"
+                        BorderThickness="1"
+                        CornerRadius="20"
+                        Padding="16,8"
+                        Margin="8,0,0,0"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="EscPill_MouseLeftButtonDown">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2"
+                                          BlurRadius="5"
+                                          Opacity="0.15"
+                                          Color="#000000"/>
+                    </Border.Effect>
+                    <TextBlock Text="Esc"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"/>
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource Surface.BackgroundAlt}"/>
+                                    <Setter Property="Effect">
+                                        <Setter.Value>
+                                            <DropShadowEffect ShadowDepth="4"
+                                                              BlurRadius="8"
+                                                              Opacity="0.22"
+                                                              Color="#000000"/>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- Premium close button -->
+        <Button x:Name="CloseButton"
+                Width="38"
+                Height="38"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="14"
+                Background="{DynamicResource Surface.BackgroundAlt}"
+                BorderThickness="0"
+                Foreground="{DynamicResource Text.Primary}"
+                FontSize="18"
+                Visibility="Collapsed"
+                Content="✕"
+                Click="CloseButton_Click">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="10">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Button.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Button.Pressed}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+
+        <!-- Floating Lens-style action bar (shown after TEXT selection exists) -->
+        <Canvas x:Name="ActionBarCanvas"
+                IsHitTestVisible="True">
+            <Border x:Name="ActionBar"
+                    Visibility="Collapsed"
+                    CornerRadius="18"
+                    BorderBrush="{DynamicResource Surface.Border}"
+                    BorderThickness="1"
+                    Padding="10,6"
+                    SnapsToDevicePixels="True"
+                    Background="{DynamicResource Surface.Background}">
+                <Border.Resources>
+                    <Style x:Key="ActionBarButtonStyle" TargetType="Button">
+                        <Setter Property="Background" Value="{DynamicResource Button.Background}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource Surface.Border}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Padding" Value="10,4"/>
+                        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="10">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource Button.Hover}" />
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource Button.Pressed}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Border.Resources>
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="18"
+                                      ShadowDepth="0"
+                                      Opacity="0.22" />
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="CopyButton"
+                            Content="Copy"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            Background="{DynamicResource Button.Background}"
+                            BorderBrush="{DynamicResource Surface.Border}"
+                            FontWeight="SemiBold"
+                            Click="CopyButton_Click" />
+                    <Button x:Name="SearchButton"
+                            Content="Search"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            Background="{DynamicResource Button.Background}"
+                            BorderBrush="{DynamicResource Surface.Border}"
+                            FontWeight="SemiBold"
+                            Click="SearchButton_Click" />
+                    <Button x:Name="TranslateButton"
+                            Content="Translate"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            Background="{DynamicResource Button.Background}"
+                            BorderBrush="{DynamicResource Surface.Border}"
+                            FontWeight="SemiBold"
+                            Click="TranslateButton_Click" />
+                </StackPanel>
+            </Border>
+        </Canvas>
+
+        <Border x:Name="ToastBorder"
+                Visibility="Collapsed"
+                Background="{DynamicResource Surface.BackgroundAlt}"
+                CornerRadius="10"
+                Padding="12,6"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,28"
+                IsHitTestVisible="True">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="ToastText"
+                           Foreground="{DynamicResource Text.Primary}"
+                           FontSize="12"
+                           FontFamily="Segoe UI"
+                           Text="Toast" />
+                <Button x:Name="ToastActionButton"
+                        Visibility="Collapsed"
+                        Content="Open folder"
+                        Margin="10,0,0,0"
+                        Padding="8,2"
+                        Background="{DynamicResource Surface.BackgroundAlt}"
+                        BorderThickness="0"
+                        Foreground="{DynamicResource Text.Primary}"
+                        FontSize="12"
+                        Click="ToastActionButton_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Settings modal -->
+        <Grid x:Name="SettingsOverlay"
+              Visibility="Collapsed"
+              Opacity="0"
+              IsHitTestVisible="False">
+            <Border x:Name="SettingsBackdrop"
+                    Background="{DynamicResource App.Backdrop}"
+                    MouseLeftButtonDown="SettingsBackdrop_OnMouseLeftButtonDown"/>
+            <Border x:Name="SettingsModal"
+                    Width="520"
+                    CornerRadius="22"
+                    BorderBrush="{DynamicResource Surface.Border}"
+                    BorderThickness="1"
+                    Background="{DynamicResource Surface.Background}"
+                    Padding="20"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="SettingsModalScale" ScaleX="0.92" ScaleY="0.92"/>
+                </Border.RenderTransform>
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28"
+                                      ShadowDepth="0"
+                                      Opacity="0.55" />
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="Settings"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               Margin="0,0,0,16"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Capture Hotkey:"
+                                   Width="130"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <Border Background="{DynamicResource Surface.BackgroundAlt}"
+                                BorderBrush="{DynamicResource Surface.Border}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="8,6"
+                                Margin="0,0,8,0">
+                            <TextBlock Text="{Binding CurrentHotkeyDisplay}"
+                                       Foreground="{DynamicResource Text.Primary}" />
+                        </Border>
+                        <Button x:Name="ChangeHotkeyButton"
+                                Content="Change"
+                                Padding="10,4"
+                                Click="ChangeHotkeyButton_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               Margin="0,8,0,0"/>
+                    <CheckBox x:Name="MouseChordCheckBox"
+                              Content="Enable Ctrl + L+R mouse chord"
+                              IsChecked="{Binding EnableMouseChord}"
+                              Foreground="{DynamicResource Text.Primary}"
+                              Margin="0,10,0,0"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
+                        <TextBlock Text="Theme:"
+                                   Width="130"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox x:Name="ThemeModeCombo"
+                                  Width="200"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding ThemeMode}"
+                                  SelectionChanged="ThemeModeCombo_SelectionChanged">
+                            <ComboBoxItem Content="System" Tag="{x:Static settings:ThemeMode.System}"/>
+                            <ComboBoxItem Content="Dark" Tag="{x:Static settings:ThemeMode.Dark}"/>
+                            <ComboBoxItem Content="Light" Tag="{x:Static settings:ThemeMode.Light}"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
+                        <TextBlock Text="OCR Provider:"
+                                   Width="130"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox x:Name="OcrProviderCombo"
+                                  Width="260"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding OcrProviderMode}"
+                                  SelectionChanged="OcrProviderCombo_SelectionChanged">
+                            <ComboBoxItem Content="Auto (Recommended)" Tag="{x:Static ocr:OcrProviderMode.Auto}"/>
+                            <ComboBoxItem Content="Windows AI OCR" Tag="{x:Static ocr:OcrProviderMode.WindowsAi}"/>
+                            <ComboBoxItem Content="Windows Media OCR" Tag="{x:Static ocr:OcrProviderMode.WindowsMedia}"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
+                        <TextBlock Text="OCR Language:"
+                                   Width="130"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox x:Name="OcrLanguageModeCombo"
+                                  Width="120"
+                                  Margin="0,0,8,0"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding OcrLanguageMode}"
+                                  SelectionChanged="OcrLanguageModeCombo_SelectionChanged">
+                            <ComboBoxItem Content="Auto" Tag="{x:Static ocr:LanguageMode.Auto}"/>
+                            <ComboBoxItem Content="Specific" Tag="{x:Static ocr:LanguageMode.Specific}"/>
+                        </ComboBox>
+                        <ComboBox x:Name="OcrLanguageCombo"
+                                  Width="220"
+                                  ItemsSource="{Binding OcrLanguages}"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding OcrLanguageTag}"
+                                  SelectionChanged="OcrLanguageCombo_SelectionChanged"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="RefreshOcrLanguagesButton"
+                                Content="Refresh languages"
+                                Padding="8,4"
+                                Click="RefreshOcrLanguagesButton_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding OcrStatusMessage}"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               Margin="0,6,0,0"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                        <Button x:Name="ResetHotkeyButton"
+                                Content="Reset"
+                                Margin="0,0,8,0"
+                                Padding="12,6"
+                                Click="ResetHotkeyButton_Click"/>
+                    </StackPanel>
+
+                    <Border Height="1"
+                            Background="{DynamicResource Surface.Border}"
+                            Margin="0,18,0,14"/>
+
+                    <TextBlock Text="Screenshots"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               Margin="0,0,0,8"/>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Save folder:"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding ScreenshotSaveFolder, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,0,0,6"/>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <Button x:Name="UseDefaultScreenshotFolderButton"
+                                Content="Use default folder"
+                                Padding="10,4"
+                                Margin="0,0,8,0"
+                                Click="UseDefaultScreenshotFolderButton_Click"/>
+                        <Button x:Name="ChooseScreenshotFolderButton"
+                                Content="Choose folder..."
+                                Padding="10,4"
+                                Click="ChooseScreenshotFolderButton_Click"/>
+                    </StackPanel>
+
+                    <Border Height="1"
+                            Background="{DynamicResource Surface.Border}"
+                            Margin="0,18,0,14"/>
+
+                    <TextBlock Text="Web Search"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               Margin="0,0,0,10"/>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Default Provider:"
+                                  Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1"
+                                  Height="28"
+                                  SelectedValuePath="Content"
+                                  SelectedValue="{Binding WebSearchDefaultProvider}">
+                            <ComboBoxItem Content="Google"/>
+                            <ComboBoxItem Content="Bing"/>
+                            <ComboBoxItem Content="DuckDuckGo"/>
+                        </ComboBox>
+                    </Grid>
+
+                    <Expander IsExpanded="{Binding WebSearchAdvancedOpen}"
+                              Foreground="{DynamicResource Text.Primary}"
+                              Background="Transparent">
+                        <Expander.Header>
+                            <TextBlock Text="Edit provider URLs"
+                                       Foreground="{DynamicResource Text.Secondary}"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Text="{}Provider URLs (use {q})"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       FontSize="12"
+                                       Margin="0,0,0,4"/>
+                            <TextBlock Text="{}{q} will be replaced with your text"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       FontSize="11"
+                                       Margin="0,0,0,10"/>
+
+                            <TextBlock Text="Google"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       FontSize="12"/>
+                            <TextBox Text="{Binding GoogleTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,4,0,8"/>
+
+                            <TextBlock Text="Bing"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       FontSize="12"/>
+                            <TextBox Text="{Binding BingTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,4,0,8"/>
+
+                            <TextBlock Text="DuckDuckGo"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       FontSize="12"/>
+                            <TextBox Text="{Binding DuckDuckGoTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,4,0,8"/>
+
+                            <Button x:Name="ResetWebSearchButton"
+                                    Content="Reset to defaults"
+                                    HorizontalAlignment="Left"
+                                    Padding="12,6"
+                                    Margin="0,4,0,0"
+                                    Click="ResetWebSearchButton_Click"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <TextBlock Text="{Binding WebSearchStatusMessage}"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               Margin="0,8,0,0"/>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                        <Button x:Name="SaveSettingsButton"
+                                Content="Save"
+                                Margin="0,0,8,0"
+                                Padding="12,6"
+                                Click="SaveSettingsButton_Click"/>
+                        <Button x:Name="CloseSettingsButton"
+                                Content="Close"
+                                Padding="12,6"
+                                Click="CloseSettingsButton_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid x:Name="SearchPanelRoot"
+              Visibility="Collapsed"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
+              IsHitTestVisible="False">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="SearchPanelSplitterColumn" Width="0" />
+                <ColumnDefinition x:Name="SearchPanelColumn" Width="0" />
+            </Grid.ColumnDefinitions>
+
+            <GridSplitter x:Name="SearchPanelSplitter"
+                          Grid.Column="1"
+                          Width="6"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          Cursor="SizeWE"
+                          Background="Transparent"
+                          Visibility="Collapsed">
+                <GridSplitter.Style>
+                    <Style TargetType="GridSplitter">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="GridSplitter">
+                                    <Grid Background="{TemplateBinding Background}">
+                                        <Border x:Name="Handle"
+                                                Width="4"
+                                                Background="{DynamicResource Surface.BackgroundAlt}"
+                                                CornerRadius="2"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Height="28">
+                                            <StackPanel Orientation="Vertical"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Margin="0,3">
+                                                <Ellipse Width="2.4" Height="2.4" Fill="{DynamicResource Surface.Border}" Margin="0,2"/>
+                                                <Ellipse Width="2.4" Height="2.4" Fill="{DynamicResource Surface.Border}" Margin="0,2"/>
+                                                <Ellipse Width="2.4" Height="2.4" Fill="{DynamicResource Surface.Border}" Margin="0,2"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Handle" Property="Background" Value="{DynamicResource Surface.BackgroundAlt}"/>
+                                            <Setter TargetName="Handle" Property="Opacity" Value="1"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </GridSplitter.Style>
+            </GridSplitter>
+
+            <Border x:Name="SearchPanel"
+                    Grid.Column="2"
+                    Margin="12"
+                    Background="{DynamicResource Surface.Background}"
+                    BorderBrush="{DynamicResource Surface.Border}"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    SnapsToDevicePixels="True"
+                    Visibility="Collapsed">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="18"
+                                      ShadowDepth="0"
+                                      Opacity="0.22" />
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="12,10,8,8">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="SearchBackButton"
+                                    Width="24"
+                                    Height="24"
+                                    Margin="0,0,6,0"
+                                    Style="{StaticResource SearchNavButtonStyle}"
+                                    FontSize="12"
+                                    Content="←"
+                                    Click="SearchBackButton_Click" />
+                            <Button x:Name="SearchForwardButton"
+                                    Width="24"
+                                    Height="24"
+                                    Margin="0,0,8,0"
+                                    Style="{StaticResource SearchNavButtonStyle}"
+                                    FontSize="12"
+                                    Content="→"
+                                    Click="SearchForwardButton_Click" />
+                            <TextBlock x:Name="SearchPanelTitle"
+                                       Text="Search"
+                                       FontSize="14"
+                                       FontFamily="Segoe UI"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text.Primary}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                        <Button x:Name="SearchPanelCloseButton"
+                                Width="28"
+                                Height="28"
+                                HorizontalAlignment="Right"
+                                Background="{DynamicResource Surface.BackgroundAlt}"
+                                BorderThickness="0"
+                                Foreground="{DynamicResource Text.Primary}"
+                                FontSize="14"
+                                Content="✕"
+                                Click="SearchPanelCloseButton_Click" />
+                    </Grid>
+                    <Border Grid.Row="1"
+                            Margin="12,0,12,12"
+                            Background="{DynamicResource TextBox.Background}"
+                            BorderBrush="{DynamicResource TextBox.Border}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            ClipToBounds="True">
+                        <Grid x:Name="SearchWebViewHost" />
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
+
