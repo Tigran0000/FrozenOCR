@@ -141,7 +141,7 @@ internal sealed class SettingsService
     {
         return new WebTranslateSettings
         {
-            DefaultProvider = ProviderGoogle,
+            DefaultProvider = ProviderBing,
             From = "auto",
             To = "en",
             Providers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -165,7 +165,7 @@ internal sealed class SettingsService
         var defaults = CreateDefaultWebTranslate();
         return defaults.Providers.TryGetValue(provider, out var template)
             ? template
-            : defaults.Providers[ProviderGoogle];
+            : defaults.Providers[ProviderBing];
     }
 
     public static string BuildTranslateUrl(
@@ -183,6 +183,13 @@ internal sealed class SettingsService
             || string.IsNullOrWhiteSpace(template))
         {
             template = GetDefaultWebTranslateTemplate(resolvedProvider);
+        }
+
+        if (string.Equals(resolvedProvider, ProviderBing, StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(from)
+            && string.IsNullOrWhiteSpace(to))
+        {
+            return template.Replace("?from={from}&to={to}&text={q}", $"?text={Uri.EscapeDataString(query)}");
         }
 
         var fromCode = string.IsNullOrWhiteSpace(from) ? settings.From : from;
@@ -461,7 +468,7 @@ internal sealed record WebSearchSettings
 
 internal sealed record WebTranslateSettings
 {
-    public string DefaultProvider { get; init; } = SettingsService.ProviderGoogle;
+    public string DefaultProvider { get; init; } = SettingsService.ProviderBing;
     public string From { get; init; } = "auto";
     public string To { get; init; } = "en";
     public Dictionary<string, string> Providers { get; init; } = new(StringComparer.OrdinalIgnoreCase);
